@@ -1,0 +1,172 @@
+[
+  {
+    "id": "paddleocr",
+    "name": "PaddleOCR 环境安装 Agent",
+    "version": "0.1.0",
+    "category": "AI 开发",
+    "source": "官方",
+    "risk": "中风险",
+    "rating": "4.8",
+    "downloads": "8.7k",
+    "platform": "Windows / Linux",
+    "runtime": "预计 12 分钟",
+    "icon": "bot",
+    "summary": "自动检测 Python、CUDA、pip 与 VC++ 运行库，安装 PaddleOCR 与 PaddlePaddle。",
+    "permissions": ["network.download", "python.pip", "system.env.read"],
+    "commands": [
+      "python --version",
+      "nvidia-smi --query-gpu=driver_version --format=csv,noheader",
+      "python -m venv .yian\\paddleocr",
+      "pip install paddlepaddle",
+      "pip install paddleocr",
+      "python -c \"from paddleocr import PaddleOCR\"",
+      "sqlite: insert install_logs"
+    ],
+    "steps": [
+      "检测 Python 与 pip",
+      "检查 CUDA / CPU 推理环境",
+      "创建隔离虚拟环境",
+      "安装 paddlepaddle",
+      "安装 paddleocr",
+      "验证 PaddleOCR 导入",
+      "归档安装日志"
+    ],
+    "rollback": [
+      "pip uninstall paddleocr paddlepaddle -y",
+      "Remove-Item .yian\\paddleocr -Recurse -Force"
+    ],
+    "repair": "检测到 Python 版本不兼容时，将建议安装 Python 3.10 并重建虚拟环境。"
+  },
+  {
+    "id": "steam",
+    "name": "Steam 安装 Agent",
+    "version": "0.1.0",
+    "category": "游戏娱乐",
+    "source": "官方",
+    "risk": "低风险",
+    "rating": "4.9",
+    "downloads": "12.3k",
+    "platform": "Windows / macOS",
+    "runtime": "预计 4 分钟",
+    "icon": "download",
+    "summary": "下载官方安装器，处理网络异常、更新卡住和启动失败。",
+    "permissions": ["network.download", "system.install"],
+    "commands": [
+      "winget --version",
+      "winget search Valve.Steam",
+      "winget install Valve.Steam",
+      "Start-Process SteamSetup.exe",
+      "Start-Process steam://open/main",
+      "sqlite: insert install_logs"
+    ],
+    "steps": ["检查 winget", "解析官方安装源", "下载安装包", "运行安装器", "验证启动入口", "保存安装记录"],
+    "rollback": ["winget uninstall Valve.Steam"],
+    "repair": "如果下载失败，将切换官方备用地址并提示网络代理检查。"
+  },
+  {
+    "id": "python",
+    "name": "Python 开发环境 Agent",
+    "version": "0.1.0",
+    "category": "开发环境",
+    "source": "官方",
+    "risk": "低风险",
+    "rating": "4.8",
+    "downloads": "10.5k",
+    "platform": "Windows / macOS / Linux",
+    "runtime": "预计 6 分钟",
+    "icon": "terminal",
+    "summary": "安装 Python、pip、venv，修复环境变量与镜像源配置。",
+    "permissions": ["network.download", "system.env.write"],
+    "commands": [
+      "python --version",
+      "winget install Python.Python.3.10",
+      "python -m pip install --upgrade pip",
+      "python -m venv .venv",
+      "echo PATH update recommendation",
+      "python -c \"print('ok')\""
+    ],
+    "steps": ["读取现有 Python", "安装兼容版本", "升级 pip", "创建虚拟环境", "写入 PATH 建议", "执行 smoke test"],
+    "rollback": ["Remove-Item .venv -Recurse -Force"],
+    "repair": "检测到多个 Python 路径时，将给出优先级整理方案。"
+  },
+  {
+    "id": "vscode",
+    "name": "VSCode 扩展安装 Agent",
+    "version": "0.1.0",
+    "category": "开发环境",
+    "source": "官方",
+    "risk": "低风险",
+    "rating": "4.7",
+    "downloads": "6.2k",
+    "platform": "Windows / macOS / Linux",
+    "runtime": "预计 3 分钟",
+    "icon": "boxes",
+    "summary": "检测 VSCode CLI，安装 Python、Docker、ESLint 等常用扩展。",
+    "permissions": ["system.read", "extension.install"],
+    "commands": [
+      "code --version",
+      "read recommended extensions",
+      "code --install-extension ms-python.python",
+      "code --install-extension ms-azuretools.vscode-docker",
+      "code --list-extensions",
+      "sqlite: insert install_logs"
+    ],
+    "steps": ["检测 VSCode CLI", "解析推荐扩展", "安装 Python 扩展", "安装 Docker 扩展", "检查扩展列表", "记录版本"],
+    "rollback": [
+      "code --uninstall-extension ms-python.python",
+      "code --uninstall-extension ms-azuretools.vscode-docker"
+    ],
+    "repair": "未检测到 code 命令时，将引导启用 Shell Command。"
+  },
+  {
+    "id": "vc-runtime",
+    "name": "VC++ 运行库修复 Agent",
+    "version": "0.1.0",
+    "category": "系统工具",
+    "source": "官方",
+    "risk": "低风险",
+    "rating": "4.9",
+    "downloads": "15.8k",
+    "platform": "Windows",
+    "runtime": "预计 5 分钟",
+    "icon": "package",
+    "summary": "安装 Microsoft VC++、.NET、DirectX，修复缺少 DLL 的启动错误。",
+    "permissions": ["network.download", "system.install", "signature.verify"],
+    "commands": [
+      "Get-CimInstance Win32_Product",
+      "Get-AuthenticodeSignature vc_redist.x64.exe",
+      "winget install Microsoft.VCRedist.2015+.x64",
+      "winget install Microsoft.DotNet.DesktopRuntime.8",
+      "dxdiag /t yian-dxdiag.txt",
+      "sqlite: insert install_logs"
+    ],
+    "steps": ["读取组件版本", "校验官方签名", "安装 VC++ 运行库", "安装 .NET Runtime", "检查 DirectX", "生成修复报告"],
+    "rollback": ["删除本次诊断临时文件", "保留系统运行库，不自动卸载共享组件"],
+    "repair": "如果安装器返回 1603，将提示关闭占用进程并重新执行修复。"
+  },
+  {
+    "id": "chrome-extension",
+    "name": "Chrome 插件安装 Agent",
+    "version": "0.1.0",
+    "category": "浏览器插件",
+    "source": "官方",
+    "risk": "低风险",
+    "rating": "4.7",
+    "downloads": "3.1k",
+    "platform": "Windows / macOS",
+    "runtime": "预计 2 分钟",
+    "icon": "globe",
+    "summary": "检测 Chrome 版本，打开官方商店页面并校验插件来源。",
+    "permissions": ["browser.open", "extension.install"],
+    "commands": [
+      "chrome --version",
+      "Start-Process chrome.exe https://chromewebstore.google.com",
+      "verify extension publisher",
+      "wait user confirmation",
+      "sqlite: insert install_logs"
+    ],
+    "steps": ["检测 Chrome", "打开官方插件源", "校验发布者", "等待用户确认", "记录插件版本"],
+    "rollback": ["提示用户在 Chrome 扩展管理页面禁用或移除插件"],
+    "repair": "如果 Chrome 缺失，将建议先执行 Chrome 安装 Agent。"
+  }
+]
