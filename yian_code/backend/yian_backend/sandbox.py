@@ -47,7 +47,7 @@ class SandboxExecutor:
         if not normalized.startswith(LIVE_ALLOWED_PREFIXES):
             return CommandExecutionResult(
                 status="blocked",
-                reason="Live sandbox only permits read-only commands in v0.4.",
+                reason="Live sandbox only permits read-only commands in v0.5.",
             )
 
         try:

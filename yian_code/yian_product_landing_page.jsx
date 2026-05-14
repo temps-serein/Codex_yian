@@ -243,6 +243,32 @@ const repairFindings = [
   },
 ];
 
+const sampleAgentManifest = `{
+  "id": "node-dev-tools",
+  "name": "Node.js 开发工具 Agent",
+  "version": "0.1.0",
+  "category": "开发环境",
+  "source": "官方 winget",
+  "risk": "中风险",
+  "rating": "待审核",
+  "downloads": "0",
+  "platform": "Windows",
+  "runtime": "预计 5 分钟",
+  "icon": "terminal",
+  "summary": "检测 Node.js 与 npm，安装 LTS 版本并验证命令入口。",
+  "permissions": ["network.download", "system.install", "system.env.read"],
+  "commands": [
+    "winget --version",
+    "winget install OpenJS.NodeJS.LTS",
+    "node --version",
+    "npm --version",
+    "sqlite: insert install_logs"
+  ],
+  "steps": ["检查 winget", "安装 Node.js LTS", "验证 node", "验证 npm", "记录安装日志"],
+  "rollback": ["winget uninstall OpenJS.NodeJS.LTS"],
+  "repair": "如果 PATH 未生效，将提示重启终端或刷新环境变量。"
+}`;
+
 function hydrateAgent(agent) {
   return {
     ...agent,
@@ -814,7 +840,119 @@ function Dashboard({ filteredAgents, checks, activeRun, agentCount, onRun, onSca
   );
 }
 
-function Market({ agents, query, setQuery, category, setCategory, filteredAgents, onRun }) {
+function auditVerdictStatus(verdict) {
+  if (verdict === "approved") return "ok";
+  if (verdict === "rejected") return "danger";
+  return "warn";
+}
+
+function auditVerdictLabel(verdict) {
+  if (verdict === "approved") return "自动通过";
+  if (verdict === "rejected") return "已拒绝";
+  return "人工复核";
+}
+
+function auditFindingStatus(level) {
+  if (level === "ok") return "ok";
+  if (level === "danger") return "danger";
+  if (level === "warn") return "warn";
+  return "info";
+}
+
+function AgentAuditPanel({ manifestText, onManifestTextChange, auditResult, auditError, isAuditing, onAudit }) {
+  const commandReviews = auditResult?.command_reviews || auditResult?.commandReviews || [];
+
+  return (
+    <Panel>
+      <PanelHeader
+        icon={ListChecks}
+        title="Agent 审核台"
+        desc="结构、来源、权限、命令风险与回滚策略。"
+        action={
+          <PrimaryButton onClick={onAudit} disabled={isAuditing}>
+            <ShieldCheck className="h-4 w-4" />
+            {isAuditing ? "审核中" : "审核 Manifest"}
+          </PrimaryButton>
+        }
+      />
+      <div className="grid gap-5 p-5 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.9fr)]">
+        <label className="block min-w-0">
+          <span className="text-sm font-semibold text-zinc-700">Manifest JSON</span>
+          <textarea
+            value={manifestText}
+            onChange={(event) => onManifestTextChange(event.target.value)}
+            spellCheck={false}
+            className="mt-2 min-h-[420px] w-full resize-y rounded-md border border-zinc-200 bg-zinc-950 p-4 font-mono text-xs leading-5 text-zinc-50 outline-none transition focus:border-zinc-400"
+          />
+        </label>
+
+        <div className="space-y-4">
+          {auditError ? (
+            <div className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm leading-6 text-rose-800">
+              {auditError}
+            </div>
+          ) : null}
+
+          {auditResult ? (
+            <>
+              <div className="rounded-lg border border-zinc-200 bg-white p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm text-zinc-500">审核结论</div>
+                    <div className="mt-1 text-xl font-semibold text-zinc-950">{auditResult.score} 分</div>
+                  </div>
+                  <StatusBadge status={auditVerdictStatus(auditResult.verdict)}>{auditVerdictLabel(auditResult.verdict)}</StatusBadge>
+                </div>
+                <p className="mt-3 text-sm leading-6 text-zinc-600">{auditResult.summary}</p>
+                {auditResult.agent ? (
+                  <div className="mt-4 rounded-md bg-zinc-50 p-3 text-sm leading-6 text-zinc-700">
+                    {auditResult.agent.name} / {auditResult.agent.id}
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="space-y-3">
+                {(auditResult.findings || []).map((finding) => (
+                  <article key={`${finding.title}-${finding.detail}`} className="rounded-lg border border-zinc-200 bg-white p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <h3 className="text-sm font-semibold text-zinc-950">{finding.title}</h3>
+                      <StatusBadge status={auditFindingStatus(finding.level)}>{finding.level}</StatusBadge>
+                    </div>
+                    <p className="mt-2 text-sm leading-6 text-zinc-500">{finding.detail}</p>
+                    <div className="mt-3 rounded-md bg-zinc-50 p-3 text-sm leading-6 text-zinc-700">{finding.action}</div>
+                  </article>
+                ))}
+              </div>
+
+              {commandReviews.length ? (
+                <div className="rounded-lg border border-zinc-200 bg-white p-4">
+                  <div className="text-sm font-semibold text-zinc-950">命令审计</div>
+                  <div className="mt-3 space-y-2">
+                    {commandReviews.map((review) => (
+                      <div key={review.command} className="rounded-md bg-zinc-50 p-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <code className="min-w-0 break-all text-xs text-zinc-700">{review.command}</code>
+                          <StatusBadge status={review.allowed ? riskStatus(review.risk) : "danger"}>{review.risk}</StatusBadge>
+                        </div>
+                        <div className="mt-2 text-xs leading-5 text-zinc-500">{(review.reasons || []).join("；")}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </>
+          ) : (
+            <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-5 text-sm leading-6 text-zinc-500">
+              粘贴或编辑 Agent Manifest 后提交审核。
+            </div>
+          )}
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+function Market({ agents, query, setQuery, category, setCategory, filteredAgents, onRun, manifestText, setManifestText, auditResult, auditError, auditing, onAuditAgent }) {
   const categories = ["全部", ...Array.from(new Set(agents.map((agent) => agent.category)))];
 
   return (
@@ -856,6 +994,14 @@ function Market({ agents, query, setQuery, category, setCategory, filteredAgents
           </div>
         </div>
       </Panel>
+      <AgentAuditPanel
+        manifestText={manifestText}
+        onManifestTextChange={setManifestText}
+        auditResult={auditResult}
+        auditError={auditError}
+        isAuditing={auditing}
+        onAudit={onAuditAgent}
+      />
     </div>
   );
 }
@@ -995,6 +1141,10 @@ export default function YianLandingPage() {
   const [activeRun, setActiveRun] = useState(null);
   const [scanCount, setScanCount] = useState(0);
   const [backendStatus, setBackendStatus] = useState("offline");
+  const [manifestText, setManifestText] = useState(sampleAgentManifest);
+  const [auditResult, setAuditResult] = useState(null);
+  const [auditError, setAuditError] = useState("");
+  const [auditing, setAuditing] = useState(false);
 
   const filteredAgents = useMemo(() => {
     const keyword = query.trim().toLowerCase();
@@ -1162,9 +1312,50 @@ export default function YianLandingPage() {
     );
   };
 
+  const auditAgentManifest = async () => {
+    let manifest;
+    try {
+      manifest = JSON.parse(manifestText);
+    } catch {
+      setAuditResult(null);
+      setAuditError("JSON 解析失败，请检查括号、引号和逗号。");
+      return;
+    }
+
+    setAuditing(true);
+    setAuditError("");
+    try {
+      const result = await yianApi.auditAgent(manifest);
+      setAuditResult(result);
+      setBackendStatus("online");
+    } catch {
+      setAuditResult(null);
+      setAuditError("本地审核服务不可用，稍后重试或先启动 FastAPI 服务。");
+      setBackendStatus("offline");
+    } finally {
+      setAuditing(false);
+    }
+  };
+
   const renderView = () => {
     if (activeView === "market") {
-      return <Market agents={agentCatalog} query={query} setQuery={setQuery} category={category} setCategory={setCategory} filteredAgents={filteredAgents} onRun={openPermission} />;
+      return (
+        <Market
+          agents={agentCatalog}
+          query={query}
+          setQuery={setQuery}
+          category={category}
+          setCategory={setCategory}
+          filteredAgents={filteredAgents}
+          onRun={openPermission}
+          manifestText={manifestText}
+          setManifestText={setManifestText}
+          auditResult={auditResult}
+          auditError={auditError}
+          auditing={auditing}
+          onAuditAgent={auditAgentManifest}
+        />
+      );
     }
     if (activeView === "system") {
       return <SystemView checks={checks} onScan={scanSystem} />;
@@ -1227,9 +1418,9 @@ export default function YianLandingPage() {
           <div className="mx-3 mt-4 rounded-lg border border-cyan-100 bg-cyan-50 p-4">
             <div className="flex items-center gap-2 text-sm font-semibold text-cyan-900">
               <BadgeCheck className="h-4 w-4" />
-              MVP v0.4
+              MVP v0.5
             </div>
-            <p className="mt-2 text-sm leading-6 text-cyan-800">已接入本地 API、单步授权、命令沙箱、风险分级与日志回滚。</p>
+            <p className="mt-2 text-sm leading-6 text-cyan-800">已接入 Manifest 审核、单步授权、命令沙箱、风险分级与日志回滚。</p>
           </div>
         </aside>
 

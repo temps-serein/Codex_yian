@@ -26,6 +26,12 @@ export const yianApi = {
   systemInfo() {
     return request("/api/system/info");
   },
+  auditAgent(manifest) {
+    return request("/api/agents/audit", {
+      method: "POST",
+      body: JSON.stringify({ manifest }),
+    });
+  },
   runAgent(agentId, permissionMode) {
     return request("/api/agent/run", {
       method: "POST",

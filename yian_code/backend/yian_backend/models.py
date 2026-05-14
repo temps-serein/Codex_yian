@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -12,6 +12,8 @@ RunStatus = Literal["queued", "running", "waiting_approval", "success", "failed"
 PermissionMode = Literal["confirm", "auto", "trusted"]
 StepStatus = Literal["waiting", "pending_approval", "running", "success", "failed", "skipped"]
 ExecutionStatus = Literal["simulated", "executed", "blocked", "failed"]
+AuditVerdict = Literal["approved", "needs_review", "rejected"]
+AuditFindingLevel = Literal["ok", "warn", "info", "danger"]
 
 
 class AgentManifest(BaseModel):
@@ -107,6 +109,26 @@ class CommandReview(BaseModel):
     risk: RiskLevel
     category: str
     reasons: list[str] = Field(default_factory=list)
+
+
+class AgentAuditRequest(BaseModel):
+    manifest: dict[str, Any] | list[Any]
+
+
+class AgentAuditFinding(BaseModel):
+    title: str
+    level: AuditFindingLevel
+    detail: str
+    action: str
+
+
+class AgentAuditResult(BaseModel):
+    verdict: AuditVerdict
+    score: int
+    summary: str
+    agent: AgentManifest | None = None
+    findings: list[AgentAuditFinding] = Field(default_factory=list)
+    command_reviews: list[CommandReview] = Field(default_factory=list)
 
 
 class DangerScanResult(BaseModel):

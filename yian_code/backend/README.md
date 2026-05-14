@@ -4,6 +4,7 @@
 
 - `GET /api/system/info`：读取系统检测项
 - `GET /api/agents`：读取官方 Agent Manifest
+- `POST /api/agents/audit`：审核用户提交的 Agent Manifest
 - `POST /api/agent/run`：创建 dry-run 执行任务
 - `GET /api/agent/runs/{run_id}`：查询任务进度与日志
 - `POST /api/agent/runs/{run_id}/approval`：批准或拒绝当前等待授权的步骤
@@ -20,4 +21,6 @@ python backend/run.py
 ```
 
 当前默认只做 dry-run，不会真实安装软件。
-真实执行有硬开关保护：必须设置 `YIAN_ALLOW_LIVE_EXECUTION=1`，且 v0.4 只允许只读白名单命令进入 live sandbox。
+真实执行有硬开关保护：必须设置 `YIAN_ALLOW_LIVE_EXECUTION=1`，且 v0.5 只允许只读白名单命令进入 live sandbox。
+
+用户上传 Agent 在进入市场前需先调用 `POST /api/agents/audit` 完成结构校验、来源复核、权限声明检查、命令风险扫描与回滚策略检查。

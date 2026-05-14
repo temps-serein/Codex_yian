@@ -26,6 +26,8 @@ LOW_RISK_PREFIXES = (
     "code --version",
     "code --list-extensions",
     "chrome --version",
+    "node --version",
+    "npm --version",
     "verify extension publisher",
     "read recommended extensions",
     "echo ",

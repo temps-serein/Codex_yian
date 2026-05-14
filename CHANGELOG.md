@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.0 - 2026-05-14
+
+- Added Agent Manifest audit API for user-submitted Agent JSON.
+- Added schema validation, duplicate id checks, source review, permission review, command risk scanning, and rollback policy checks.
+- Added Agent marketplace audit panel for pasting Manifest JSON and reviewing score, verdict, findings, and command-level risk details.
+- Updated app version copy and documentation for the v0.5 Agent review workflow.
+
 ## 0.4.0 - 2026-05-14
 
 - Added Yi'an local FastAPI backend with system detection, Agent catalog, dry-run runner, SQLite log storage, and diagnosis endpoints.

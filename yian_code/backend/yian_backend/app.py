@@ -6,8 +6,9 @@ from pathlib import Path
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
+from .audit import audit_agent_manifest
 from .catalog import AgentCatalog
-from .models import AgentApprovalRequest, AgentRunRecord, AgentRunRequest, DiagnosisFinding, DiagnosisRequest, SecurityScanRequest
+from .models import AgentApprovalRequest, AgentAuditRequest, AgentAuditResult, AgentRunRecord, AgentRunRequest, DiagnosisFinding, DiagnosisRequest, SecurityScanRequest
 from .runner import AgentRunner
 from .sandbox import SandboxExecutor
 from .security import scan_commands
@@ -17,7 +18,7 @@ from .system_probe import probe_system
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 
-app = FastAPI(title="Yian Local Agent API", version="0.1.0")
+app = FastAPI(title="Yian Local Agent API", version="0.5.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -55,6 +56,11 @@ def list_agents():
 @app.post("/api/security/scan")
 def security_scan(payload: SecurityScanRequest):
     return scan_commands(payload.commands)
+
+
+@app.post("/api/agents/audit", response_model=AgentAuditResult)
+def audit_agent(payload: AgentAuditRequest) -> AgentAuditResult:
+    return audit_agent_manifest(payload.manifest, existing_ids=[agent.id for agent in catalog.list()])
 
 
 @app.get("/api/system/info")
