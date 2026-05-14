@@ -275,6 +275,8 @@ function hydrateAgent(agent) {
     icon: iconByAgentId[agent.id] || Bot,
     color: colorByAgentId[agent.id] || "text-zinc-700 bg-zinc-50 border-zinc-100",
     commandReviews: agent.commandReviews || agent.command_reviews || [],
+    origin: agent.origin || "official",
+    enabled: agent.enabled !== false,
   };
 }
 
@@ -859,8 +861,9 @@ function auditFindingStatus(level) {
   return "info";
 }
 
-function AgentAuditPanel({ manifestText, onManifestTextChange, auditResult, auditError, isAuditing, onAudit }) {
+function AgentAuditPanel({ manifestText, onManifestTextChange, auditResult, auditError, isAuditing, onAudit, onSave, isSaving, saveMessage }) {
   const commandReviews = auditResult?.command_reviews || auditResult?.commandReviews || [];
+  const canSave = auditResult?.verdict === "approved";
 
   return (
     <Panel>
@@ -869,10 +872,16 @@ function AgentAuditPanel({ manifestText, onManifestTextChange, auditResult, audi
         title="Agent 审核台"
         desc="结构、来源、权限、命令风险与回滚策略。"
         action={
-          <PrimaryButton onClick={onAudit} disabled={isAuditing}>
-            <ShieldCheck className="h-4 w-4" />
-            {isAuditing ? "审核中" : "审核 Manifest"}
-          </PrimaryButton>
+          <div className="flex flex-wrap gap-2">
+            <SecondaryButton onClick={onSave} disabled={!canSave || isSaving}>
+              <Database className="h-4 w-4" />
+              {isSaving ? "保存中" : "保存到市场"}
+            </SecondaryButton>
+            <PrimaryButton onClick={onAudit} disabled={isAuditing}>
+              <ShieldCheck className="h-4 w-4" />
+              {isAuditing ? "审核中" : "审核 Manifest"}
+            </PrimaryButton>
+          </div>
         }
       />
       <div className="grid gap-5 p-5 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.9fr)]">
@@ -890,6 +899,11 @@ function AgentAuditPanel({ manifestText, onManifestTextChange, auditResult, audi
           {auditError ? (
             <div className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm leading-6 text-rose-800">
               {auditError}
+            </div>
+          ) : null}
+          {saveMessage ? (
+            <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-4 text-sm leading-6 text-cyan-800">
+              {saveMessage}
             </div>
           ) : null}
 
@@ -952,7 +966,69 @@ function AgentAuditPanel({ manifestText, onManifestTextChange, auditResult, audi
   );
 }
 
-function Market({ agents, query, setQuery, category, setCategory, filteredAgents, onRun, manifestText, setManifestText, auditResult, auditError, auditing, onAuditAgent }) {
+function UserAgentRegistry({ records, updatingAgentId, onStatusChange }) {
+  return (
+    <Panel>
+      <PanelHeader icon={Database} title="本地用户 Agent" desc="审核通过后保存到本机，可启用、停用并进入市场执行。" />
+      <div className="divide-y divide-zinc-100">
+        {records.length ? (
+          records.map((record) => {
+            const agent = record.agent;
+            const enabled = record.status === "enabled";
+            return (
+              <div key={agent.id} className="flex flex-col gap-4 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-sm font-semibold text-zinc-950">{agent.name}</h3>
+                    <StatusBadge status={enabled ? "ok" : "idle"}>{enabled ? "已启用" : "已停用"}</StatusBadge>
+                    <StatusBadge status={auditVerdictStatus(record.audit.verdict)}>{auditVerdictLabel(record.audit.verdict)}</StatusBadge>
+                  </div>
+                  <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-500">{agent.summary}</p>
+                  <div className="mt-2 flex flex-wrap gap-2 text-xs text-zinc-500">
+                    <span className="rounded-md bg-zinc-100 px-2 py-1">{agent.id}</span>
+                    <span className="rounded-md bg-zinc-100 px-2 py-1">{agent.category}</span>
+                    <span className="rounded-md bg-zinc-100 px-2 py-1">审核 {record.audit.score} 分</span>
+                  </div>
+                </div>
+                <SecondaryButton
+                  onClick={() => onStatusChange(agent.id, enabled ? "disabled" : "enabled")}
+                  disabled={updatingAgentId === agent.id}
+                >
+                  {enabled ? <Square className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
+                  {updatingAgentId === agent.id ? "更新中" : enabled ? "停用" : "启用"}
+                </SecondaryButton>
+              </div>
+            );
+          })
+        ) : (
+          <div className="px-5 py-6 text-sm leading-6 text-zinc-500">还没有保存的用户 Agent。通过下方审核台提交通过后，会出现在这里。</div>
+        )}
+      </div>
+    </Panel>
+  );
+}
+
+function Market({
+  agents,
+  query,
+  setQuery,
+  category,
+  setCategory,
+  filteredAgents,
+  onRun,
+  userAgentRecords,
+  manifestText,
+  setManifestText,
+  auditResult,
+  auditError,
+  auditing,
+  onAuditAgent,
+  onSaveUserAgent,
+  savingAgent,
+  saveMessage,
+  updatingAgentId,
+  onUserAgentStatusChange,
+}) {
   const categories = ["全部", ...Array.from(new Set(agents.map((agent) => agent.category)))];
 
   return (
@@ -994,6 +1070,7 @@ function Market({ agents, query, setQuery, category, setCategory, filteredAgents
           </div>
         </div>
       </Panel>
+      <UserAgentRegistry records={userAgentRecords} updatingAgentId={updatingAgentId} onStatusChange={onUserAgentStatusChange} />
       <AgentAuditPanel
         manifestText={manifestText}
         onManifestTextChange={setManifestText}
@@ -1001,6 +1078,9 @@ function Market({ agents, query, setQuery, category, setCategory, filteredAgents
         auditError={auditError}
         isAuditing={auditing}
         onAudit={onAuditAgent}
+        onSave={onSaveUserAgent}
+        isSaving={savingAgent}
+        saveMessage={saveMessage}
       />
     </div>
   );
@@ -1145,6 +1225,10 @@ export default function YianLandingPage() {
   const [auditResult, setAuditResult] = useState(null);
   const [auditError, setAuditError] = useState("");
   const [auditing, setAuditing] = useState(false);
+  const [userAgentRecords, setUserAgentRecords] = useState([]);
+  const [savingAgent, setSavingAgent] = useState(false);
+  const [saveMessage, setSaveMessage] = useState("");
+  const [updatingAgentId, setUpdatingAgentId] = useState("");
 
   const filteredAgents = useMemo(() => {
     const keyword = query.trim().toLowerCase();
@@ -1160,9 +1244,10 @@ export default function YianLandingPage() {
 
     async function loadLocalServiceData() {
       try {
-        const [apiAgents, systemInfo] = await Promise.all([yianApi.agents(), yianApi.systemInfo()]);
+        const [apiAgents, systemInfo, userRecords] = await Promise.all([yianApi.agents(), yianApi.systemInfo(), yianApi.userAgents()]);
         if (cancelled) return;
         setAgentCatalog(apiAgents.map(hydrateAgent));
+        setUserAgentRecords(userRecords || []);
         setChecks((systemInfo.checks || []).map(hydrateCheck));
         setBackendStatus("online");
       } catch {
@@ -1319,11 +1404,13 @@ export default function YianLandingPage() {
     } catch {
       setAuditResult(null);
       setAuditError("JSON 解析失败，请检查括号、引号和逗号。");
+      setSaveMessage("");
       return;
     }
 
     setAuditing(true);
     setAuditError("");
+    setSaveMessage("");
     try {
       const result = await yianApi.auditAgent(manifest);
       setAuditResult(result);
@@ -1334,6 +1421,51 @@ export default function YianLandingPage() {
       setBackendStatus("offline");
     } finally {
       setAuditing(false);
+    }
+  };
+
+  const saveUserAgent = async () => {
+    let manifest;
+    try {
+      manifest = JSON.parse(manifestText);
+    } catch {
+      setSaveMessage("");
+      setAuditError("JSON 解析失败，请检查括号、引号和逗号。");
+      return;
+    }
+
+    setSavingAgent(true);
+    setSaveMessage("");
+    try {
+      const record = await yianApi.saveUserAgent(manifest);
+      const [apiAgents, userRecords] = await Promise.all([yianApi.agents(), yianApi.userAgents()]);
+      setAgentCatalog(apiAgents.map(hydrateAgent));
+      setUserAgentRecords(userRecords || [record]);
+      setAuditResult(record.audit);
+      setSaveMessage(`${record.agent.name} 已保存并启用，可在市场中执行。`);
+      setBackendStatus("online");
+    } catch {
+      setSaveMessage("保存失败：Manifest 必须自动审核通过，且不能占用官方 Agent ID。");
+      setBackendStatus("online");
+    } finally {
+      setSavingAgent(false);
+    }
+  };
+
+  const updateUserAgentStatus = async (agentId, status) => {
+    setUpdatingAgentId(agentId);
+    setSaveMessage("");
+    try {
+      await yianApi.setUserAgentStatus(agentId, status);
+      const [apiAgents, userRecords] = await Promise.all([yianApi.agents(), yianApi.userAgents()]);
+      setAgentCatalog(apiAgents.map(hydrateAgent));
+      setUserAgentRecords(userRecords || []);
+      setBackendStatus("online");
+    } catch {
+      setSaveMessage("状态更新失败，请确认本地服务仍在运行。");
+      setBackendStatus("offline");
+    } finally {
+      setUpdatingAgentId("");
     }
   };
 
@@ -1348,12 +1480,18 @@ export default function YianLandingPage() {
           setCategory={setCategory}
           filteredAgents={filteredAgents}
           onRun={openPermission}
+          userAgentRecords={userAgentRecords}
           manifestText={manifestText}
           setManifestText={setManifestText}
           auditResult={auditResult}
           auditError={auditError}
           auditing={auditing}
           onAuditAgent={auditAgentManifest}
+          onSaveUserAgent={saveUserAgent}
+          savingAgent={savingAgent}
+          saveMessage={saveMessage}
+          updatingAgentId={updatingAgentId}
+          onUserAgentStatusChange={updateUserAgentStatus}
         />
       );
     }
@@ -1418,9 +1556,9 @@ export default function YianLandingPage() {
           <div className="mx-3 mt-4 rounded-lg border border-cyan-100 bg-cyan-50 p-4">
             <div className="flex items-center gap-2 text-sm font-semibold text-cyan-900">
               <BadgeCheck className="h-4 w-4" />
-              MVP v0.5
+              MVP v0.6
             </div>
-            <p className="mt-2 text-sm leading-6 text-cyan-800">已接入 Manifest 审核、单步授权、命令沙箱、风险分级与日志回滚。</p>
+            <p className="mt-2 text-sm leading-6 text-cyan-800">已接入用户 Agent 市场、Manifest 审核、单步授权、命令沙箱与日志回滚。</p>
           </div>
         </aside>
 

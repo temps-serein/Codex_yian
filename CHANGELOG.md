@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.0 - 2026-05-14
+
+- Added local user Agent registry backed by SQLite.
+- Added APIs to save approved user Agent manifests, list saved user Agents, and enable or disable them.
+- Included enabled user Agents in the executable Agent catalog and protected disabled user Agents from execution.
+- Added frontend user Agent management panel with save, enable, and disable actions after Manifest audit.
+- Updated version copy and documentation for the user Agent market workflow.
+
 ## 0.5.0 - 2026-05-14
 
 - Added Agent Manifest audit API for user-submitted Agent JSON.

@@ -23,6 +23,9 @@ export const yianApi = {
   agents() {
     return request("/api/agents");
   },
+  userAgents() {
+    return request("/api/agents/user");
+  },
   systemInfo() {
     return request("/api/system/info");
   },
@@ -30,6 +33,18 @@ export const yianApi = {
     return request("/api/agents/audit", {
       method: "POST",
       body: JSON.stringify({ manifest }),
+    });
+  },
+  saveUserAgent(manifest) {
+    return request("/api/agents/user", {
+      method: "POST",
+      body: JSON.stringify({ manifest }),
+    });
+  },
+  setUserAgentStatus(agentId, status) {
+    return request(`/api/agents/user/${agentId}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
     });
   },
   runAgent(agentId, permissionMode) {

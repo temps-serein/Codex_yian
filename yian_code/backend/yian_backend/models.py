@@ -14,6 +14,7 @@ StepStatus = Literal["waiting", "pending_approval", "running", "success", "faile
 ExecutionStatus = Literal["simulated", "executed", "blocked", "failed"]
 AuditVerdict = Literal["approved", "needs_review", "rejected"]
 AuditFindingLevel = Literal["ok", "warn", "info", "danger"]
+UserAgentStatus = Literal["enabled", "disabled"]
 
 
 class AgentManifest(BaseModel):
@@ -129,6 +130,18 @@ class AgentAuditResult(BaseModel):
     agent: AgentManifest | None = None
     findings: list[AgentAuditFinding] = Field(default_factory=list)
     command_reviews: list[CommandReview] = Field(default_factory=list)
+
+
+class UserAgentRecord(BaseModel):
+    agent: AgentManifest
+    status: UserAgentStatus = "enabled"
+    audit: AgentAuditResult
+    created_at: datetime
+    updated_at: datetime
+
+
+class UserAgentStatusRequest(BaseModel):
+    status: UserAgentStatus
 
 
 class DangerScanResult(BaseModel):

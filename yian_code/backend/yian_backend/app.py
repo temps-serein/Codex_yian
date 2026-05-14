@@ -8,17 +8,29 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .audit import audit_agent_manifest
 from .catalog import AgentCatalog
-from .models import AgentApprovalRequest, AgentAuditRequest, AgentAuditResult, AgentRunRecord, AgentRunRequest, DiagnosisFinding, DiagnosisRequest, SecurityScanRequest
+from .models import (
+    AgentApprovalRequest,
+    AgentAuditRequest,
+    AgentAuditResult,
+    AgentManifest,
+    AgentRunRecord,
+    AgentRunRequest,
+    DiagnosisFinding,
+    DiagnosisRequest,
+    SecurityScanRequest,
+    UserAgentRecord,
+    UserAgentStatusRequest,
+)
 from .runner import AgentRunner
 from .sandbox import SandboxExecutor
 from .security import scan_commands
-from .storage import RunStore
+from .storage import RunStore, UserAgentStore
 from .system_probe import probe_system
 
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 
-app = FastAPI(title="Yian Local Agent API", version="0.5.0")
+app = FastAPI(title="Yian Local Agent API", version="0.6.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -35,6 +47,7 @@ app.add_middleware(
 
 catalog = AgentCatalog(BASE_DIR / "agents")
 store = RunStore(BASE_DIR / "data" / "yian.db")
+user_agents = UserAgentStore(BASE_DIR / "data" / "yian.db")
 runner = AgentRunner(store, SandboxExecutor())
 
 
@@ -47,9 +60,9 @@ def health() -> dict[str, str]:
 def list_agents():
     enriched_agents = []
     for agent in catalog.list():
-        payload = agent.model_dump()
-        payload["command_reviews"] = [review.model_dump() for review in scan_commands(agent.commands).reviews]
-        enriched_agents.append(payload)
+        enriched_agents.append(_enrich_agent(agent, origin="official"))
+    for agent in user_agents.list_enabled_agents():
+        enriched_agents.append(_enrich_agent(agent, origin="user"))
     return enriched_agents
 
 
@@ -60,7 +73,34 @@ def security_scan(payload: SecurityScanRequest):
 
 @app.post("/api/agents/audit", response_model=AgentAuditResult)
 def audit_agent(payload: AgentAuditRequest) -> AgentAuditResult:
-    return audit_agent_manifest(payload.manifest, existing_ids=[agent.id for agent in catalog.list()])
+    return audit_agent_manifest(payload.manifest, existing_ids=_reserved_agent_ids())
+
+
+@app.get("/api/agents/user", response_model=list[UserAgentRecord])
+def list_user_agents() -> list[UserAgentRecord]:
+    return user_agents.list_records()
+
+
+@app.post("/api/agents/user", response_model=UserAgentRecord)
+def save_user_agent(payload: AgentAuditRequest) -> UserAgentRecord:
+    audit = audit_agent_manifest(payload.manifest, existing_ids=_official_agent_ids())
+    if audit.verdict != "approved":
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": "Agent Manifest must pass automated audit before it can be saved.",
+                "audit": audit.model_dump(),
+            },
+        )
+    return user_agents.save(audit, status="enabled")
+
+
+@app.patch("/api/agents/user/{agent_id}/status", response_model=UserAgentRecord)
+def update_user_agent_status(agent_id: str, payload: UserAgentStatusRequest) -> UserAgentRecord:
+    record = user_agents.set_status(agent_id, payload.status)
+    if not record:
+        raise HTTPException(status_code=404, detail="User Agent not found")
+    return record
 
 
 @app.get("/api/system/info")
@@ -70,7 +110,7 @@ def system_info():
 
 @app.post("/api/agent/run", response_model=AgentRunRecord)
 def run_agent(payload: AgentRunRequest, background_tasks: BackgroundTasks) -> AgentRunRecord:
-    agent = catalog.get(payload.agent_id)
+    agent = catalog.get(payload.agent_id) or user_agents.get_enabled_agent(payload.agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
 
@@ -147,3 +187,19 @@ def diagnose(payload: DiagnosisRequest):
             )
         )
     return findings
+
+
+def _reserved_agent_ids() -> list[str]:
+    return _official_agent_ids() + user_agents.ids()
+
+
+def _official_agent_ids() -> list[str]:
+    return [agent.id for agent in catalog.list()]
+
+
+def _enrich_agent(agent: AgentManifest, origin: str) -> dict[str, object]:
+    payload = agent.model_dump()
+    payload["origin"] = origin
+    payload["enabled"] = True
+    payload["command_reviews"] = [review.model_dump() for review in scan_commands(agent.commands).reviews]
+    return payload
