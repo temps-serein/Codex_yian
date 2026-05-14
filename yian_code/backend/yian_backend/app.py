@@ -30,7 +30,7 @@ from .system_probe import probe_system
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 
-app = FastAPI(title="Yian Local Agent API", version="0.6.0")
+app = FastAPI(title="Yian Local Agent API", version="0.7.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -154,6 +154,14 @@ def rollback_run(run_id: str) -> AgentRunRecord:
 @app.get("/api/logs")
 def list_logs():
     return store.list_runs()
+
+
+@app.get("/api/logs/{run_id}")
+def get_log(run_id: str):
+    record = store.get_run_log(run_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Log not found")
+    return record
 
 
 @app.post("/api/diagnose", response_model=list[DiagnosisFinding])

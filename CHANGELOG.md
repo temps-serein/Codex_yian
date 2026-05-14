@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.0 - 2026-05-14
+
+- Added install log detail endpoint for persisted Agent run records.
+- Updated the logs page to read real backend logs instead of demo history.
+- Added status and risk filters for install history.
+- Added click-through run detail viewing for historical logs while preserving live active-run controls.
+- Updated version copy and documentation for the log management workflow.
+
 ## 0.6.0 - 2026-05-14
 
 - Added local user Agent registry backed by SQLite.

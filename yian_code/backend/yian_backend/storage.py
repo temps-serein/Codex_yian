@@ -55,6 +55,27 @@ class RunStore:
             for row in rows
         ]
 
+    def get_run_log(self, run_id: str) -> dict[str, object] | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT id, agent_name, status, risk, payload, created_at
+                FROM install_logs
+                WHERE id = ?
+                """,
+                (run_id,),
+            ).fetchone()
+        if not row:
+            return None
+        return {
+            "id": row["id"],
+            "name": row["agent_name"],
+            "status": row["status"],
+            "risk": row["risk"],
+            "created_at": row["created_at"],
+            "payload": json.loads(row["payload"]),
+        }
+
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self._db_path)
         conn.row_factory = sqlite3.Row

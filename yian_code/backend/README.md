@@ -14,6 +14,7 @@
 - `POST /api/agent/runs/{run_id}/rollback`：模拟回滚
 - `POST /api/security/scan`：返回命令允许/阻断、风险等级和原因
 - `GET /api/logs`：读取安装日志
+- `GET /api/logs/{run_id}`：读取单条安装日志详情
 - `POST /api/diagnose`：返回诊断建议
 
 启动：
@@ -24,6 +25,6 @@ python backend/run.py
 ```
 
 当前默认只做 dry-run，不会真实安装软件。
-真实执行有硬开关保护：必须设置 `YIAN_ALLOW_LIVE_EXECUTION=1`，且 v0.6 只允许只读白名单命令进入 live sandbox。
+真实执行有硬开关保护：必须设置 `YIAN_ALLOW_LIVE_EXECUTION=1`，且 v0.7 只允许只读白名单命令进入 live sandbox。
 
 用户上传 Agent 在进入市场前需先调用 `POST /api/agents/audit` 完成结构校验、来源复核、权限声明检查、命令风险扫描与回滚策略检查。自动审核通过后可通过 `POST /api/agents/user` 保存到本地用户 Agent 注册表，停用状态下不会进入可执行 Agent 目录。

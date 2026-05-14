@@ -216,12 +216,6 @@ const initialChecks = [
   { id: "disk", label: "磁盘空间", value: "256GB 可用", status: "ok", icon: HardDrive },
 ];
 
-const sampleHistory = [
-  { id: "log-1", name: "PaddleOCR 环境安装", status: "成功", time: "10 分钟前", risk: "中风险" },
-  { id: "log-2", name: "Steam 安装", status: "成功", time: "1 小时前", risk: "低风险" },
-  { id: "log-3", name: "Chrome 插件安装", status: "已取消", time: "昨天", risk: "低风险" },
-];
-
 const repairFindings = [
   {
     title: "PaddleOCR 安装失败",
@@ -288,7 +282,7 @@ function hydrateCheck(check) {
 }
 
 function normalizeRunRecord(record, agent) {
-  const runStatus = record.status === "rolled_back" ? "success" : record.status;
+  const runStatus = record.status;
   const stepStates = (record.step_states || []).map((step) => ({
     index: step.index,
     label: step.label,
@@ -347,6 +341,65 @@ function riskStatus(risk) {
   if (risk === "低风险") return "ok";
   if (risk === "中风险") return "warn";
   return "danger";
+}
+
+function runStatusLabel(status) {
+  const labels = {
+    queued: "排队中",
+    running: "执行中",
+    waiting_approval: "待授权",
+    success: "成功",
+    failed: "失败",
+    rejected: "已拒绝",
+    rolled_back: "已回滚",
+  };
+  return labels[status] || status || "未知";
+}
+
+function runStatusBadge(status) {
+  if (status === "success") return "ok";
+  if (status === "running" || status === "queued" || status === "waiting_approval") return "running";
+  if (status === "failed" || status === "rejected") return "danger";
+  if (status === "rolled_back") return "warn";
+  return "idle";
+}
+
+function formatLogTime(value) {
+  if (!value) return "未知时间";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function normalizeLogRecord(record) {
+  const payload = record.payload || {};
+  return {
+    id: record.id || payload.id,
+    name: record.name || payload.agent_name,
+    agentId: payload.agent_id,
+    status: record.status || payload.status,
+    risk: record.risk || payload.risk,
+    createdAt: record.created_at || payload.started_at,
+    payload,
+  };
+}
+
+function runFromLogRecord(record) {
+  if (!record?.payload) return null;
+  const payload = record.payload;
+  const agent = {
+    id: payload.agent_id,
+    name: payload.agent_name || record.name,
+    runtime: "历史记录",
+    risk: payload.risk || record.risk,
+    steps: payload.steps || [],
+  };
+  return normalizeRunRecord(payload, agent);
 }
 
 function IconButton({ title, children, className = "", ...props }) {
@@ -614,7 +667,8 @@ function RunPanel({ run, onRollback, onOpenMarket, onApproveStep, onRejectStep }
   const percent = Math.min(100, Math.round((completed / Math.max(stepStates.length, 1)) * 100));
   const waitingApproval = run.status === "waiting_approval";
   const rejected = run.status === "rejected";
-  const statusText = run.status === "success" ? "执行完成" : waitingApproval ? "等待授权" : rejected ? "已拒绝" : "正在执行";
+  const rolledBack = run.status === "rolled_back";
+  const statusText = run.status === "success" ? "执行完成" : waitingApproval ? "等待授权" : rejected ? "已拒绝" : rolledBack ? "已回滚" : "正在执行";
 
   return (
     <Panel className="min-h-[420px]">
@@ -623,7 +677,7 @@ function RunPanel({ run, onRollback, onOpenMarket, onApproveStep, onRejectStep }
         title={run.agent.name}
         desc={`${run.agent.runtime} · ${statusText}`}
         action={
-          run.status === "success" ? (
+          run.status === "success" && onRollback ? (
             <SecondaryButton onClick={onRollback}>
               <RotateCcw className="h-4 w-4" />
               模拟回滚
@@ -637,6 +691,11 @@ function RunPanel({ run, onRollback, onOpenMarket, onApproveStep, onRejectStep }
             <StatusBadge status="danger">
               <AlertTriangle className="h-3.5 w-3.5" />
               已停止
+            </StatusBadge>
+          ) : rolledBack ? (
+            <StatusBadge status="warn">
+              <RotateCcw className="h-3.5 w-3.5" />
+              已回滚
             </StatusBadge>
           ) : (
             <StatusBadge status="running">
@@ -657,7 +716,7 @@ function RunPanel({ run, onRollback, onOpenMarket, onApproveStep, onRejectStep }
             <div className="h-full rounded-full bg-cyan-600 transition-all duration-500" style={{ width: `${percent}%` }} />
           </div>
 
-          {waitingApproval && run.currentStep ? (
+          {waitingApproval && run.currentStep && onApproveStep && onRejectStep ? (
             <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
               <div className="flex items-center gap-2 text-sm font-semibold text-amber-900">
                 <LockKeyhole className="h-4 w-4" />
@@ -733,8 +792,8 @@ function RunPanel({ run, onRollback, onOpenMarket, onApproveStep, onRejectStep }
             <span className="text-xs text-zinc-500">yian-agent-runner</span>
           </div>
           <div className="h-[315px] overflow-y-auto p-4 font-mono text-sm leading-6 text-zinc-200">
-            {run.logs.map((line) => (
-              <div key={line} className="break-words">
+            {run.logs.map((line, index) => (
+              <div key={`${index}-${line}`} className="break-words">
                 {line}
               </div>
             ))}
@@ -1109,32 +1168,126 @@ function SystemView({ checks, onScan }) {
   );
 }
 
-function LogsView({ activeRun, onApproveStep, onRejectStep, onRollback }) {
+function LogsView({
+  activeRun,
+  installLogs,
+  selectedLogId,
+  setSelectedLogId,
+  logStatusFilter,
+  setLogStatusFilter,
+  logRiskFilter,
+  setLogRiskFilter,
+  logsLoading,
+  onRefreshLogs,
+  onApproveStep,
+  onRejectStep,
+  onRollback,
+}) {
+  const normalizedLogs = installLogs.map(normalizeLogRecord);
   const activeLog = activeRun
-    ? [{ id: "active", name: activeRun.agent.name, status: activeRun.status === "success" ? "成功" : "执行中", time: "刚刚", risk: activeRun.agent.risk }, ...sampleHistory]
-    : sampleHistory;
+    ? {
+        id: "active",
+        name: activeRun.agent.name,
+        status: activeRun.status,
+        risk: activeRun.agent.risk,
+        createdAt: new Date().toISOString(),
+        payload: null,
+      }
+    : null;
+  const allLogs = activeLog ? [activeLog, ...normalizedLogs] : normalizedLogs;
+  const filteredLogs = allLogs.filter((log) => {
+    const matchesStatus = logStatusFilter === "全部" || log.status === logStatusFilter;
+    const matchesRisk = logRiskFilter === "全部" || log.risk === logRiskFilter;
+    return matchesStatus && matchesRisk;
+  });
+  const selectedLog = selectedLogId === "active" && activeLog ? activeLog : normalizedLogs.find((log) => log.id === selectedLogId);
+  const fallbackLog = filteredLogs.find((log) => log.id !== "active") || null;
+  const detailRun = selectedLog?.id === "active" ? activeRun : runFromLogRecord(selectedLog) || (activeRun && !selectedLogId ? activeRun : runFromLogRecord(fallbackLog));
+  const statusOptions = ["全部", "running", "waiting_approval", "success", "failed", "rejected", "rolled_back"];
+  const riskOptions = ["全部", "低风险", "中风险", "高风险"];
 
   return (
     <div className="grid gap-5 xl:grid-cols-[420px_1fr]">
       <Panel>
-        <PanelHeader icon={History} title="安装历史" desc="记录 Agent、状态、风险等级与执行时间。" />
-        <div className="divide-y divide-zinc-100">
-          {activeLog.map((log) => (
-            <div key={log.id} className="flex items-center justify-between gap-3 px-5 py-4">
-              <div className="min-w-0">
-                <div className="truncate text-sm font-semibold text-zinc-900">{log.name}</div>
-                <div className="mt-1 text-xs text-zinc-500">{log.time}</div>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <StatusBadge status={log.status === "成功" ? "ok" : log.status === "执行中" ? "running" : "idle"}>{log.status}</StatusBadge>
-                <StatusBadge status={log.risk === "中风险" ? "warn" : "ok"}>{log.risk}</StatusBadge>
-              </div>
+        <PanelHeader
+          icon={History}
+          title="安装历史"
+          desc="来自本地日志库，可按状态和风险筛选。"
+          action={
+            <IconButton title="刷新日志" onClick={onRefreshLogs}>
+              <RotateCcw className={cx("h-4 w-4", logsLoading ? "animate-spin" : "")} />
+            </IconButton>
+          }
+        />
+        <div className="space-y-3 border-b border-zinc-100 p-4">
+          <div className="flex flex-wrap gap-2">
+            {statusOptions.map((status) => (
+              <button
+                type="button"
+                key={status}
+                onClick={() => setLogStatusFilter(status)}
+                className={cx(
+                  "h-8 rounded-md border px-2.5 text-xs font-semibold transition",
+                  logStatusFilter === status ? "border-zinc-950 bg-zinc-950 text-white" : "border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50",
+                )}
+              >
+                {status === "全部" ? "全部状态" : runStatusLabel(status)}
+              </button>
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {riskOptions.map((risk) => (
+              <button
+                type="button"
+                key={risk}
+                onClick={() => setLogRiskFilter(risk)}
+                className={cx(
+                  "h-8 rounded-md border px-2.5 text-xs font-semibold transition",
+                  logRiskFilter === risk ? "border-zinc-950 bg-zinc-950 text-white" : "border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50",
+                )}
+              >
+                {risk === "全部" ? "全部风险" : risk}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="max-h-[620px] overflow-y-auto divide-y divide-zinc-100">
+          {filteredLogs.length ? (
+            filteredLogs.map((log) => (
+              <button
+                type="button"
+                key={log.id}
+                onClick={() => setSelectedLogId(log.id)}
+                className={cx(
+                  "flex w-full items-center justify-between gap-3 px-5 py-4 text-left transition hover:bg-zinc-50",
+                  selectedLogId === log.id ? "bg-zinc-50" : "",
+                )}
+              >
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-semibold text-zinc-900">{log.name}</div>
+                  <div className="mt-1 text-xs text-zinc-500">{log.id === "active" ? "当前执行" : formatLogTime(log.createdAt)}</div>
+                </div>
+                <div className="flex shrink-0 flex-col items-end gap-2">
+                  <StatusBadge status={runStatusBadge(log.status)}>{runStatusLabel(log.status)}</StatusBadge>
+                  <StatusBadge status={riskStatus(log.risk)}>{log.risk}</StatusBadge>
+                </div>
+              </button>
+            ))
+          ) : (
+            <div className="px-5 py-8 text-sm leading-6 text-zinc-500">
+              暂无匹配日志。执行一次 Agent 后，日志会自动写入本地记录。
             </div>
-          ))}
+          )}
         </div>
       </Panel>
 
-      <RunPanel run={activeRun} onRollback={onRollback} onOpenMarket={() => {}} onApproveStep={onApproveStep} onRejectStep={onRejectStep} />
+      <RunPanel
+        run={detailRun}
+        onRollback={detailRun?.backendRunId && detailRun.backendRunId === activeRun?.backendRunId ? onRollback : null}
+        onOpenMarket={() => {}}
+        onApproveStep={detailRun?.backendRunId && detailRun.backendRunId === activeRun?.backendRunId ? onApproveStep : null}
+        onRejectStep={detailRun?.backendRunId && detailRun.backendRunId === activeRun?.backendRunId ? onRejectStep : null}
+      />
     </div>
   );
 }
@@ -1229,6 +1382,11 @@ export default function YianLandingPage() {
   const [savingAgent, setSavingAgent] = useState(false);
   const [saveMessage, setSaveMessage] = useState("");
   const [updatingAgentId, setUpdatingAgentId] = useState("");
+  const [installLogs, setInstallLogs] = useState([]);
+  const [selectedLogId, setSelectedLogId] = useState("");
+  const [logStatusFilter, setLogStatusFilter] = useState("全部");
+  const [logRiskFilter, setLogRiskFilter] = useState("全部");
+  const [logsLoading, setLogsLoading] = useState(false);
 
   const filteredAgents = useMemo(() => {
     const keyword = query.trim().toLowerCase();
@@ -1244,10 +1402,11 @@ export default function YianLandingPage() {
 
     async function loadLocalServiceData() {
       try {
-        const [apiAgents, systemInfo, userRecords] = await Promise.all([yianApi.agents(), yianApi.systemInfo(), yianApi.userAgents()]);
+        const [apiAgents, systemInfo, userRecords, logRecords] = await Promise.all([yianApi.agents(), yianApi.systemInfo(), yianApi.userAgents(), yianApi.logs()]);
         if (cancelled) return;
         setAgentCatalog(apiAgents.map(hydrateAgent));
         setUserAgentRecords(userRecords || []);
+        setInstallLogs(logRecords || []);
         setChecks((systemInfo.checks || []).map(hydrateCheck));
         setBackendStatus("online");
       } catch {
@@ -1311,6 +1470,11 @@ export default function YianLandingPage() {
     return () => window.clearInterval(timer);
   }, [activeRun]);
 
+  useEffect(() => {
+    if (!activeRun?.backendRunId || !["success", "failed", "rejected"].includes(activeRun.status)) return;
+    refreshLogs();
+  }, [activeRun?.backendRunId, activeRun?.status]);
+
   const openPermission = (agent) => {
     setSelectedAgent(agent);
   };
@@ -1322,6 +1486,7 @@ export default function YianLandingPage() {
     try {
       const record = await yianApi.runAgent(agent.id, permissionMode);
       setBackendStatus("online");
+      setSelectedLogId("active");
       setActiveRun(normalizeRunRecord(record, agent));
       return;
     } catch {
@@ -1341,6 +1506,7 @@ export default function YianLandingPage() {
         `[RUN] ${agent.steps[0]}`,
       ],
     });
+    setSelectedLogId("active");
   };
 
   const rollbackRun = async () => {
@@ -1395,6 +1561,19 @@ export default function YianLandingPage() {
         return check;
       }),
     );
+  };
+
+  const refreshLogs = async () => {
+    setLogsLoading(true);
+    try {
+      const records = await yianApi.logs();
+      setInstallLogs(records || []);
+      setBackendStatus("online");
+    } catch {
+      setBackendStatus("offline");
+    } finally {
+      setLogsLoading(false);
+    }
   };
 
   const auditAgentManifest = async () => {
@@ -1499,7 +1678,23 @@ export default function YianLandingPage() {
       return <SystemView checks={checks} onScan={scanSystem} />;
     }
     if (activeView === "logs") {
-      return <LogsView activeRun={activeRun} onApproveStep={() => decideCurrentStep(true)} onRejectStep={() => decideCurrentStep(false)} onRollback={rollbackRun} />;
+      return (
+        <LogsView
+          activeRun={activeRun}
+          installLogs={installLogs}
+          selectedLogId={selectedLogId}
+          setSelectedLogId={setSelectedLogId}
+          logStatusFilter={logStatusFilter}
+          setLogStatusFilter={setLogStatusFilter}
+          logRiskFilter={logRiskFilter}
+          setLogRiskFilter={setLogRiskFilter}
+          logsLoading={logsLoading}
+          onRefreshLogs={refreshLogs}
+          onApproveStep={() => decideCurrentStep(true)}
+          onRejectStep={() => decideCurrentStep(false)}
+          onRollback={rollbackRun}
+        />
+      );
     }
     if (activeView === "diagnosis") {
       return <DiagnosisView onRunPaddle={() => openPermission(agentCatalog.find((agent) => agent.id === "paddleocr") || agentCatalog[0])} />;
@@ -1556,9 +1751,9 @@ export default function YianLandingPage() {
           <div className="mx-3 mt-4 rounded-lg border border-cyan-100 bg-cyan-50 p-4">
             <div className="flex items-center gap-2 text-sm font-semibold text-cyan-900">
               <BadgeCheck className="h-4 w-4" />
-              MVP v0.6
+              MVP v0.7
             </div>
-            <p className="mt-2 text-sm leading-6 text-cyan-800">已接入用户 Agent 市场、Manifest 审核、单步授权、命令沙箱与日志回滚。</p>
+            <p className="mt-2 text-sm leading-6 text-cyan-800">已接入用户 Agent 市场、Manifest 审核、真实安装日志、命令沙箱与回滚。</p>
           </div>
         </aside>
 

@@ -75,6 +75,9 @@ export const yianApi = {
   logs() {
     return request("/api/logs");
   },
+  log(runId) {
+    return request(`/api/logs/${runId}`);
+  },
   diagnose(issue, logs = []) {
     return request("/api/diagnose", {
       method: "POST",
