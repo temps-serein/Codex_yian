@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# Build output
+dist/
+build/
+.vite/
+
+# Local runtime data
+*.log
+*.err.log
+*.db
+*.db-*
+yian_code/backend/data/*.db
+yian_code/backend/data/*.db-*
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Reference source snapshot not part of Yi'an app
+cc-haha-main/
